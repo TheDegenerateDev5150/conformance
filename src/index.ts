@@ -2,6 +2,7 @@
 
 import { Command } from 'commander';
 import { ZodError } from 'zod';
+import { promises as fs } from 'fs';
 import {
   runConformanceTest,
   printClientResults,
@@ -41,6 +42,7 @@ import {
   ClientOptionsSchema,
   ServerOptionsSchema
 } from './schemas';
+import type { AuthorizationServerOptions } from './schemas';
 import {
   loadExpectedFailures,
   evaluateBaseline,
@@ -514,7 +516,11 @@ program
   .description(
     'Run conformance tests against an authorization server implementation'
   )
-  .requiredOption('--url <url>', 'URL of the authorization server issuer')
+  .option(
+    '--file <filename>',
+    'Path to JSON settings file (see examples/authorization-server-settings.example.json)'
+  )
+  .option('--url <url>', 'URL of the authorization server issuer')
   .option('--scenario <scenario>', 'Test scenario to run')
   .option('-o, --output-dir <path>', 'Save results to this directory')
   .option(
@@ -524,8 +530,43 @@ program
   .option('--verbose', 'Show verbose output (JSON instead of pretty print)')
   .action(async (options) => {
     try {
-      // Validate options with Zod
-      const validated = AuthorizationServerOptionsSchema.parse(options);
+      let fileOptions: AuthorizationServerOptions | undefined;
+      if (options.file) {
+        try {
+          const raw = JSON.parse(await fs.readFile(options.file, 'utf-8'));
+          // The file must be a complete, valid config on its own; CLI flags
+          // are optional overrides. .strict() rejects unknown keys so typos
+          // surface instead of being silently ignored.
+          fileOptions = AuthorizationServerOptionsSchema.strict().parse(raw);
+        } catch (error) {
+          if (error instanceof ZodError) {
+            const details = error.issues
+              .map((e) => `  ${e.path.join('.') || '(root)'}: ${e.message}`)
+              .join('\n');
+            console.error(
+              `Invalid settings file '${options.file}':\n${details}`
+            );
+          } else {
+            console.error(
+              `Failed to read settings file '${options.file}': ` +
+                (error instanceof Error ? error.message : String(error))
+            );
+          }
+          process.exit(1);
+        }
+      }
+      if (!fileOptions && !options.url) {
+        console.error('error: must provide --url or --file');
+        process.exit(1);
+      }
+      // CLI flags override file values; undefined CLI values must not clobber file values
+      const merged = {
+        ...fileOptions,
+        ...Object.fromEntries(
+          Object.entries(options).filter(([, v]) => v !== undefined)
+        )
+      };
+      const validated = AuthorizationServerOptionsSchema.parse(merged);
       const verbose = options.verbose ?? false;
       const outputDir = options.outputDir;
       const specVersionFilter = options.specVersion
