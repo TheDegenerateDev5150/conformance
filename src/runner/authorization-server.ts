@@ -3,10 +3,12 @@ import path from 'path';
 import { ConformanceCheck } from '../types';
 import { getClientScenarioForAuthorizationServer } from '../scenarios';
 import { createResultDir, formatPrettyChecks } from './utils';
+import { AuthorizationServerOptions } from '../schemas';
 
 export async function runAuthorizationServerConformanceTest(
-  serverUrl: string,
+  options: AuthorizationServerOptions,
   scenarioName: string,
+  details: Record<string, unknown>,
   outputDir?: string
 ): Promise<{
   checks: ConformanceCheck[];
@@ -28,10 +30,10 @@ export async function runAuthorizationServerConformanceTest(
   const scenario = getClientScenarioForAuthorizationServer(scenarioName)!;
 
   console.log(
-    `Running client scenario for authorization server '${scenarioName}' against server: ${serverUrl}`
+    `Running client scenario for authorization server '${scenarioName}' against server: ${options.url}`
   );
 
-  const checks = await scenario.run(serverUrl);
+  const checks = await scenario.run(options, details);
 
   if (resultDir) {
     await fs.writeFile(

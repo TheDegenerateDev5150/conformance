@@ -522,6 +522,20 @@ program
   )
   .option('--url <url>', 'URL of the authorization server issuer')
   .option('--scenario <scenario>', 'Test scenario to run')
+  .option(
+    '--client-id <id>',
+    'OAuth client ID registered with the authorization server'
+  )
+  .option(
+    '--client-secret <secret>',
+    'OAuth client secret (omit for public/PKCE-only clients)'
+  )
+  .option(
+    '-p, --port <port>',
+    'Port for the local OAuth callback server; register http://127.0.0.1:<port>/callback as a redirect URI',
+    (value) => Number(value),
+    3000
+  )
   .option('-o, --output-dir <path>', 'Save results to this directory')
   .option(
     '--spec-version <version>',
@@ -575,9 +589,11 @@ program
 
       // If a single scenario is specified, run just that one
       if (validated.scenario) {
+        const details: Record<string, unknown> = {};
         const result = await runAuthorizationServerConformanceTest(
-          validated.url,
+          validated,
           validated.scenario,
+          details,
           outputDir
         );
 
@@ -604,14 +620,22 @@ program
       );
 
       const allResults: { scenario: string; checks: ConformanceCheck[] }[] = [];
+      const details: Record<string, unknown> = {};
       for (const scenarioName of scenarios) {
         console.log(`\n=== Running scenario: ${scenarioName} ===`);
         try {
           const result = await runAuthorizationServerConformanceTest(
-            validated.url,
+            validated,
             scenarioName,
+            details,
             outputDir
           );
+          if (
+            result.checks[0].status === 'SUCCESS' &&
+            result.checks[0].details
+          ) {
+            details[scenarioName] = result.checks[0].details;
+          }
           allResults.push({ scenario: scenarioName, checks: result.checks });
         } catch (error) {
           console.error(`Failed to run scenario ${scenarioName}:`, error);
